@@ -1,3 +1,11 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kartik & Co. Properties</title>
+</head>
+<body>
 <style>
   :root{
     --paper:#EDE8D9;
@@ -172,6 +180,10 @@
   }
 </style>
 
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+
 <div id="kc-root">
   <header class="kc-header">
     <div class="kc-wrap kc-header-inner">
@@ -189,8 +201,19 @@
 </div>
 
 <script>
+const firebaseConfig = {
+  apiKey: "AIzaSyC-mnBxV2VRiNy8KxYJg2uoAcHmuh12EP0",
+  authDomain: "kartik-properties-30239.firebaseapp.com",
+  projectId: "kartik-properties-30239",
+  storageBucket: "kartik-properties-30239.firebasestorage.app",
+  messagingSenderId: "565489950248",
+  appId: "1:565489950248:web:50358467cb2ca1d8c7df1d"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
 (function(){
-  const ADMIN_PASSWORD = "kartik2026"; // change this, and tell Abhavya it's not secure for production
 
   const PROPERTY_TYPES = ["Plot","Land","Villa"];
   const REGIONS = ["Ghaziabad","Madhya Pradesh","Uttarakhand","Uttar Pradesh"];
@@ -210,12 +233,20 @@
     filterType: 'All',
     filterRegion: 'All',
     adminAuthed: false,
+    adminChecking: true,
+    adminEmailInput: '',
     adminPwInput: '',
     adminError: '',
     editingId: null,
     formDraft: blankDraft(),
     formError: '',
   };
+
+  auth.onAuthStateChanged(function(user){
+    state.adminAuthed = !!user;
+    state.adminChecking = false;
+    if(state.tab === 'admin') render();
+  });
 
   function blankDraft(){
     return { title:'', type:'Plot', city:'', region:'Ghaziabad', price:'', area:'', areaUnit:'sq.yd', description:'' };
@@ -225,19 +256,26 @@
 
   async function loadListings(){
     try {
-      const res = await window.storage.get('kc-listings', true);
-      state.listings = res && res.value ? JSON.parse(res.value) : [];
+      const snap = await db.collection('listings').orderBy('createdAt', 'desc').get();
+      state.listings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch(e) {
+      console.error('load failed', e);
       state.listings = [];
     }
     state.loading = false;
     render();
   }
 
-  async function saveListings(){
-    try {
-      await window.storage.set('kc-listings', JSON.stringify(state.listings), true);
-    } catch(e) { console.error('save failed', e); }
+  async function addListingDoc(data){
+    await db.collection('listings').add({ ...data, createdAt: Date.now() });
+  }
+
+  async function updateListingDoc(id, data){
+    await db.collection('listings').doc(id).set(data, { merge: true });
+  }
+
+  async function deleteListingDoc(id){
+    await db.collection('listings').doc(id).delete();
   }
 
   function go(tab){ state.tab = tab; state.formError=''; render(); window.scrollTo(0,0); }
@@ -440,14 +478,18 @@
   }
 
   function renderAdmin(){
+    if(state.adminChecking){
+      return `<div class="kc-wrap"><div class="kc-admin-gate"><p>Checking login…</p></div></div>`;
+    }
     if(!state.adminAuthed){
       return `
       <div class="kc-wrap">
         <div class="kc-admin-gate">
           <h2>Admin</h2>
-          <p>Enter the admin password to manage listings.</p>
+          <p>Log in with your admin email and password.</p>
           ${state.adminError ? `<div class="kc-msg kc-msg-error">${state.adminError}</div>` : ''}
-          <input type="password" id="kc-admin-pw" placeholder="Password" value="${escapeHtml(state.adminPwInput)}">
+          <input type="email" id="kc-admin-email" placeholder="Email" value="${escapeHtml(state.adminEmailInput)}" autocomplete="username">
+          <input type="password" id="kc-admin-pw" placeholder="Password" value="${escapeHtml(state.adminPwInput)}" autocomplete="current-password">
           <button class="kc-btn kc-btn-solid" style="width:100%;" id="kc-admin-login">Log in</button>
         </div>
       </div>`;
@@ -558,19 +600,24 @@
     }
     if(state.tab === 'admin'){
       if(!state.adminAuthed){
+        const emailInput = document.getElementById('kc-admin-email');
         const pwInput = document.getElementById('kc-admin-pw');
-        const tryLogin = () => {
-          if(pwInput.value === ADMIN_PASSWORD){
-            state.adminAuthed = true; state.adminError=''; render();
-          } else {
-            state.adminError = 'Incorrect password.'; state.adminPwInput = pwInput.value; render();
+        const tryLogin = async () => {
+          state.adminEmailInput = emailInput.value;
+          state.adminPwInput = pwInput.value;
+          try {
+            await auth.signInWithEmailAndPassword(emailInput.value.trim(), pwInput.value);
+            state.adminError = '';
+          } catch(e) {
+            state.adminError = 'Incorrect email or password.';
           }
+          render();
         };
         document.getElementById('kc-admin-login').onclick = tryLogin;
         pwInput.onkeydown = (e) => { if(e.key === 'Enter') tryLogin(); };
-        pwInput.focus();
+        emailInput.focus();
       } else {
-        document.getElementById('kc-admin-logout').onclick = () => { state.adminAuthed = false; state.adminPwInput=''; render(); };
+        document.getElementById('kc-admin-logout').onclick = () => { auth.signOut(); state.adminPwInput=''; state.adminEmailInput=''; render(); };
         document.getElementById('kc-save-listing').onclick = onSaveListing;
         const cancelBtn = document.getElementById('kc-cancel-edit');
         if(cancelBtn) cancelBtn.onclick = () => { state.editingId = null; state.formDraft = blankDraft(); state.formError=''; render(); };
@@ -601,16 +648,19 @@
       return;
     }
     state.formError = '';
-    if(state.editingId){
-      const idx = state.listings.findIndex(l => l.id === state.editingId);
-      if(idx > -1) state.listings[idx] = { ...state.listings[idx], ...data };
-      state.editingId = null;
-    } else {
-      state.listings.unshift({ id: uid(), ...data });
+    try {
+      if(state.editingId){
+        await updateListingDoc(state.editingId, data);
+        state.editingId = null;
+      } else {
+        await addListingDoc(data);
+      }
+      state.formDraft = blankDraft();
+      await loadListings();
+    } catch(e) {
+      state.formError = 'Could not save — check your connection and try again.';
+      render();
     }
-    state.formDraft = blankDraft();
-    await saveListings();
-    render();
   }
 
   function startEdit(id){
@@ -623,9 +673,12 @@
   }
 
   async function deleteListing(id){
-    state.listings = state.listings.filter(l => l.id !== id);
-    await saveListings();
-    render();
+    try {
+      await deleteListingDoc(id);
+      await loadListings();
+    } catch(e) {
+      console.error('delete failed', e);
+    }
   }
 
   window.__kcGo = go;
@@ -633,3 +686,6 @@
   loadListings();
 })();
 </script>
+
+</body>
+</html>
