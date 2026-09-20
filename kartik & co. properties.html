@@ -322,7 +322,7 @@ const db = firebase.firestore();
   }
 
   function renderNav(){
-    const items = [['home','Home'],['listings','Listings'],['about','About'],['contact','Contact'],['admin','Admin']];
+    const items = [['home','Home'],['listings','Listings'],['about','About'],['contact','Contact']];
     document.getElementById('kc-nav').innerHTML = items.map(([id,label]) =>
       `<button data-tab="${id}" class="${state.tab===id?'active':''}">${label}</button>`
     ).join('');
@@ -575,7 +575,6 @@ const db = firebase.firestore();
   function renderFooter(){
     return `<footer class="kc-footer"><div class="kc-wrap" style="display:flex; justify-content:space-between; width:100%; flex-wrap:wrap; gap:10px;">
       <span>© ${new Date().getFullYear()} Kartik &amp; Co. Properties</span>
-      <button onclick="window.__kcGo('admin')">Admin</button>
     </div></footer>`;
   }
 
@@ -682,6 +681,7 @@ const db = firebase.firestore();
   }
 
   window.__kcGo = go;
+  if(window.location.hash === '#admin'){ state.tab = 'admin'; }
   render();
   loadListings();
 })();
