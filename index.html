@@ -237,6 +237,8 @@ const db = firebase.firestore();
 
   const PHONE_DISPLAY = "+91 93196 02507";
   const WHATSAPP_NUMBER = "919319602507"; // country code + number, no symbols
+  const CLOUDINARY_CLOUD_NAME = "mxgalgfw";
+  const CLOUDINARY_UPLOAD_PRESET = "kartik_uploads";
 
   function waLink(message){
     return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
@@ -256,6 +258,8 @@ const db = firebase.firestore();
     editingId: null,
     formDraft: blankDraft(),
     formError: '',
+    uploadingImage: false,
+    uploadingVideo: false,
   };
 
   auth.onAuthStateChanged(function(user){
@@ -269,6 +273,17 @@ const db = firebase.firestore();
   }
 
   function uid(){ return 'l_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+
+  async function uploadToCloudinary(file, resourceType){
+    const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    const res = await fetch(url, { method: 'POST', body: formData });
+    if(!res.ok) throw new Error('Upload failed');
+    const data = await res.json();
+    return data.secure_url;
+  }
 
   async function loadListings(){
     try {
@@ -583,12 +598,16 @@ const db = firebase.firestore();
           </div>
           <div class="kc-form-row">
             <div>
-              <label>Photo link (optional)</label>
-              <input type="url" id="f-imageurl" value="${escapeHtml(d.imageUrl || '')}" placeholder="Paste an image link">
+              <label>Photo</label>
+              <input type="file" id="f-imagefile" accept="image/*" ${state.uploadingImage ? 'disabled' : ''}>
+              ${state.uploadingImage ? `<div style="font-size:12px;color:var(--soil);margin-top:4px;">Uploading photo…</div>` : ''}
+              ${d.imageUrl && !state.uploadingImage ? `<div style="font-size:12px;color:var(--sage);margin-top:4px;">✓ Photo attached</div>` : ''}
             </div>
             <div>
-              <label>Video link (optional)</label>
-              <input type="url" id="f-videourl" value="${escapeHtml(d.videoUrl || '')}" placeholder="Paste a YouTube/Reel link">
+              <label>Video</label>
+              <input type="file" id="f-videofile" accept="video/*" ${state.uploadingVideo ? 'disabled' : ''}>
+              ${state.uploadingVideo ? `<div style="font-size:12px;color:var(--soil);margin-top:4px;">Uploading video…</div>` : ''}
+              ${d.videoUrl && !state.uploadingVideo ? `<div style="font-size:12px;color:var(--sage);margin-top:4px;">✓ Video attached</div>` : ''}
             </div>
           </div>
           <div style="display:flex; gap:10px;">
@@ -669,6 +688,34 @@ const db = firebase.firestore();
         if(cancelBtn) cancelBtn.onclick = () => { state.editingId = null; state.formDraft = blankDraft(); state.formError=''; render(); };
         document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => startEdit(b.dataset.edit));
         document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteListing(b.dataset.del));
+
+        const imgFile = document.getElementById('f-imagefile');
+        if(imgFile) imgFile.onchange = async () => {
+          const file = imgFile.files[0];
+          if(!file) return;
+          state.uploadingImage = true; render();
+          try {
+            const url = await uploadToCloudinary(file, 'image');
+            state.formDraft.imageUrl = url;
+          } catch(e) {
+            state.formError = 'Photo upload failed — check your connection and try again.';
+          }
+          state.uploadingImage = false; render();
+        };
+
+        const vidFile = document.getElementById('f-videofile');
+        if(vidFile) vidFile.onchange = async () => {
+          const file = vidFile.files[0];
+          if(!file) return;
+          state.uploadingVideo = true; render();
+          try {
+            const url = await uploadToCloudinary(file, 'video');
+            state.formDraft.videoUrl = url;
+          } catch(e) {
+            state.formError = 'Video upload failed — check your connection and try again.';
+          }
+          state.uploadingVideo = false; render();
+        };
       }
     }
   }
@@ -683,8 +730,8 @@ const db = firebase.firestore();
       area: document.getElementById('f-area').value.trim(),
       areaUnit: document.getElementById('f-areaunit').value,
       description: document.getElementById('f-desc').value.trim(),
-      imageUrl: document.getElementById('f-imageurl').value.trim(),
-      videoUrl: document.getElementById('f-videourl').value.trim(),
+      imageUrl: state.formDraft.imageUrl || '',
+      videoUrl: state.formDraft.videoUrl || '',
     };
   }
 
