@@ -132,6 +132,14 @@
   .kc-empty { padding: 40px 20px; text-align:center; color: var(--ink-soft); border:1px dashed var(--line); font-size:14px; }
   .kc-empty a { color: var(--seal); border-bottom: 1px solid var(--seal); }
 
+  /* TESTIMONIALS */
+  .kc-testimonials { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap: 20px; }
+  .kc-testimonial { border: 1px solid var(--line); background: var(--paper-2); padding: 20px 22px; }
+  .kc-testimonial-quote { font-size: 14.5px; color: var(--ink); line-height: 1.6; font-style: italic; }
+  .kc-testimonial-quote::before { content: "“"; }
+  .kc-testimonial-quote::after { content: "”"; }
+  .kc-testimonial-by { margin-top: 14px; font-size: 12.5px; color: var(--soil); border-top: 1px dashed var(--line); padding-top: 10px; }
+
   /* ABOUT */
   .kc-about-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 40px; }
   .kc-about-grid p { color: var(--ink-soft); font-size: 15px; margin-bottom: 14px; }
@@ -219,6 +227,14 @@ const db = firebase.firestore();
   const REGIONS = ["Ghaziabad","Madhya Pradesh","Uttarakhand","Uttar Pradesh"];
   const AREA_UNITS = ["sq.ft","sq.yd","acre","bigha"];
 
+  // EDIT ME: replace with real client quotes as your father collects them.
+  // Each needs: quote (what they said), by (name), context (deal/location — optional)
+  const TESTIMONIALS = [
+    { quote: "Replace this with a real client's words once you have one.", by: "Client name", context: "Plot buyer, Ghaziabad" },
+    { quote: "Add a second short testimonial here.", by: "Client name", context: "Land buyer" },
+    { quote: "A third one rounds it out nicely.", by: "Client name", context: "Villa buyer" },
+  ];
+
   const PHONE_DISPLAY = "+91 93196 02507";
   const WHATSAPP_NUMBER = "919319602507"; // country code + number, no symbols
 
@@ -249,7 +265,7 @@ const db = firebase.firestore();
   });
 
   function blankDraft(){
-    return { title:'', type:'Plot', city:'', region:'Ghaziabad', price:'', area:'', areaUnit:'sq.yd', description:'' };
+    return { title:'', type:'Plot', city:'', region:'Ghaziabad', price:'', area:'', areaUnit:'sq.yd', description:'', imageUrl:'', videoUrl:'' };
   }
 
   function uid(){ return 'l_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
@@ -295,13 +311,15 @@ const db = firebase.firestore();
     return `<div class="kc-card">
       <div class="kc-card-plot">
         <span class="kc-card-type-badge">${l.type}</span>
-        ${plotSvg(l.type)}
+        ${l.imageUrl ? `<img src="${escapeHtml(l.imageUrl)}" alt="${escapeHtml(l.title)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none';this.nextElementSibling.style.display='block';">` : ''}
+        <div style="${l.imageUrl ? 'display:none;' : ''}">${plotSvg(l.type)}</div>
       </div>
       <div class="kc-card-body">
         <div class="kc-card-title">${escapeHtml(l.title)}</div>
         <div class="kc-card-loc">${escapeHtml(l.city)}, ${escapeHtml(l.region)}</div>
         <div class="kc-card-meta"><span>${escapeHtml(l.area)} ${escapeHtml(l.areaUnit)}</span></div>
         ${l.description ? `<div class="kc-card-desc">${escapeHtml(l.description)}</div>` : ''}
+        ${l.videoUrl ? `<a class="kc-card-cta" href="${escapeHtml(l.videoUrl)}" target="_blank" rel="noopener">Watch video →</a>` : ''}
         <div class="kc-card-foot">
           <div class="kc-card-price">${escapeHtml(l.price)}</div>
           <a class="kc-card-cta" href="#" onclick="return false;">Enquire →</a>
@@ -363,7 +381,26 @@ const db = firebase.firestore();
         </div>
         ${renderListingsPreview()}
       </div>
+    </section>
+    <section class="kc-section" style="border-bottom:none;">
+      <div class="kc-wrap">
+        <div class="kc-section-head">
+          <div>
+            <h2>What clients say</h2>
+            <div class="kc-section-desc">A few words from people we've worked with.</div>
+          </div>
+        </div>
+        ${renderTestimonials()}
+      </div>
     </section>`;
+  }
+
+  function renderTestimonials(){
+    return `<div class="kc-testimonials">${TESTIMONIALS.map(t => `
+      <div class="kc-testimonial">
+        <div class="kc-testimonial-quote">${escapeHtml(t.quote)}</div>
+        <div class="kc-testimonial-by">${escapeHtml(t.by)}${t.context ? ` — ${escapeHtml(t.context)}` : ''}</div>
+      </div>`).join('')}</div>`;
   }
 
   function renderListingsPreview(){
@@ -544,6 +581,16 @@ const db = firebase.firestore();
             <label>Description (optional)</label>
             <textarea id="f-desc">${escapeHtml(d.description)}</textarea>
           </div>
+          <div class="kc-form-row">
+            <div>
+              <label>Photo link (optional)</label>
+              <input type="url" id="f-imageurl" value="${escapeHtml(d.imageUrl || '')}" placeholder="Paste an image link">
+            </div>
+            <div>
+              <label>Video link (optional)</label>
+              <input type="url" id="f-videourl" value="${escapeHtml(d.videoUrl || '')}" placeholder="Paste a YouTube/Reel link">
+            </div>
+          </div>
           <div style="display:flex; gap:10px;">
             <button class="kc-btn kc-btn-solid" id="kc-save-listing">${state.editingId ? 'Save changes' : 'Add listing'}</button>
             ${state.editingId ? `<button class="kc-btn" id="kc-cancel-edit">Cancel</button>` : ''}
@@ -636,6 +683,8 @@ const db = firebase.firestore();
       area: document.getElementById('f-area').value.trim(),
       areaUnit: document.getElementById('f-areaunit').value,
       description: document.getElementById('f-desc').value.trim(),
+      imageUrl: document.getElementById('f-imageurl').value.trim(),
+      videoUrl: document.getElementById('f-videourl').value.trim(),
     };
   }
 
@@ -666,7 +715,7 @@ const db = firebase.firestore();
     const l = state.listings.find(x => x.id === id);
     if(!l) return;
     state.editingId = id;
-    state.formDraft = { title:l.title, type:l.type, region:l.region, city:l.city, price:l.price, area:l.area, areaUnit:l.areaUnit, description:l.description };
+    state.formDraft = { title:l.title, type:l.type, region:l.region, city:l.city, price:l.price, area:l.area, areaUnit:l.areaUnit, description:l.description, imageUrl:l.imageUrl, videoUrl:l.videoUrl };
     render();
     window.scrollTo(0,0);
   }
